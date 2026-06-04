@@ -1,0 +1,723 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ project.name }} - TaskFlow{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <div class="d-flex align-items-center gap-3">
+                <div class="rounded-circle p-3" style="background: {{ project.color|default:'#667eea' }}20; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-folder-open fa-2x" style="color: {{ project.color|default:'#667eea' }}"></i>
+                </div>
+                <div>
+                    <h1 class="h3 mb-1">{{ project.name }}</h1>
+                    <p class="text-muted mb-0">
+                        {{ project.client|default:"Нет заказчика" }} 
+                        {% if project.contract_number %} | Договор: {{ project.contract_number }}{% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+      {% if user_role != 'employee' %}
+        <div class="d-flex ">
+                <a href="{% url 'project_analytics' project_id=project.id %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-chart-line"></i> Аналитика
+                </a>
+            </div>
+        <div class="d-flex ">
+                <a href="{% url 'projects_edit' project_id=project.id %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-chart-line"></i> Редактировать
+                </a>
+            </div>
+     {% endif %}
+        <div class="d-flex gap-2">
+            <a href="/projects/" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Назад
+            </a>
+        </div>
+    </div>
+
+    <!-- Статистика проекта (только для Admin и Manager) -->
+    {% if user_role != 'employee' %}
+    <div class="stats-grid mb-4">
+        <div class="stat-card">
+            <div class="stat-title">Статус</div>
+            <div class="stat-value">
+                <span class="badge {% if project.status == 'active' %}bg-success{% elif project.status == 'on_hold' %}bg-warning{% elif project.status == 'completed' %}bg-secondary{% else %}bg-danger{% endif %} fs-6">
+                    {{ project.get_status_display }}
+                </span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-title">Бюджет</div>
+            <div class="stat-value">{{ project.budget|floatformat:0 }} ₽</div>
+            <small class="text-muted">Плановые часы: {{ project.planned_hours|default:0 }} ч</small>
+        </div>
+        <div class="stat-card">
+            <div class="stat-title">Прогресс</div>
+            <div class="stat-value" id="project-completion">{{ project.completion_percent|default:0 }}%</div>
+            <div class="progress mt-2">
+                <div class="progress-bar" id="project-progress-bar" style="width: {{ project.completion_percent|default:0 }}%; background: {{ project.color|default:'#667eea' }}"></div>
+            </div>
+            <small class="text-muted" id="project-stats">Задач: {{ project.tasks.count|default:0 }} | Завершено: {{ project.completed_tasks_count|default:0 }}</small>
+        </div>
+        <div class="stat-card">
+            <div class="stat-title">Сроки</div>
+            <div class="stat-value">
+                {% if project.end_date %}
+                    {{ project.end_date|date:"d.m.Y" }}
+                {% else %}
+                    —
+                {% endif %}
+            </div>
+            <small class="text-muted">
+                {% if project.is_overdue %}
+                    <span class="text-danger">⚠️ Просрочен</span>
+                {% elif project.days_remaining %}
+                    Осталось {{ project.days_remaining }} дн.
+                {% endif %}
+            </small>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Информация о проекте -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-info-circle me-2"></i>Описание проекта</h5>
+                </div>
+                <div class="card-body">
+                    <p>{{ project.description|default:"Нет описания"|linebreaks }}</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-user-tie me-2"></i>Ответственные</h5>
+                </div>
+                <div class="card-body">
+                    <p><strong>Менеджер проекта:</strong> {{ project.manager|default:"Не назначен" }}</p>
+                    {% if user_role != 'employee' %}
+                    <p><strong>Теги:</strong> {{ project.tags|default:"Нет тегов" }}</p>
+                    {% endif %}
+                    <hr>
+                    <small class="text-muted">Исполнители назначаются при создании задач</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Список задач проекта -->
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="fas fa-tasks me-2"></i>Мои задачи</h5>
+            <div class="btn-group btn-group-sm">
+                <button class="btn btn-outline-secondary" onclick="filterTasks('all')">Все</button>
+                <button class="btn btn-outline-secondary" onclick="filterTasks('new')">Новые</button>
+                <button class="btn btn-outline-secondary" onclick="filterTasks('in_progress')">В работе</button>
+                <button class="btn btn-outline-secondary" onclick="filterTasks('done')">Завершены</button>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="tasksTable">
+                    <thead>
+                        <tr>
+                            <th>Название</th>
+                            <th>Статус</th>
+                            <th>Приоритет</th>
+                            <th>Исполнители</th>
+                            <th>Срок</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tasks-list">
+                        <tr><td colspan="6" class="text-center">Загрузка задач......</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<span id="current-user-id" style="display:none;">
+    {{ request.user.id }}
+</span>
+<script>
+{% if jwt_access %}
+localStorage.setItem('access_token', '{{ jwt_access }}');
+localStorage.setItem('refresh_token', '{{ jwt_refresh }}');
+{% endif %}
+
+let projectId = {{ project.id }};
+let currentFilter = 'all';
+let currentTaskId = null;
+let allTasks = [];
+const userRole = '{{ user_role }}';
+
+
+// ================= TOKEN =================
+function getToken() {
+    return localStorage.getItem('access_token');
+}
+
+async function apiFetch(url, options = {}) {
+    let token = getToken();
+
+    options.headers = {
+        ...(options.headers || {}),
+        'Authorization': `Bearer ${token}`
+    };
+
+    let response = await fetch(url, options);
+
+    if (response.status === 401) {
+        const refresh = localStorage.getItem('refresh_token');
+
+        if (refresh) {
+            const r = await fetch('/api/token/refresh/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ refresh })
+            });
+
+            if (r.ok) {
+                const d = await r.json();
+
+                localStorage.setItem('access_token', d.access);
+
+                options.headers['Authorization'] =
+                    `Bearer ${d.access}`;
+
+                response = await fetch(url, options);
+            }
+        }
+    }
+
+    return response;
+}
+
+// ================= TASKS =================
+async function loadTasks() {
+    try {
+        const response = await apiFetch(
+            `/api/projects/${projectId}/tasks/`
+        );
+
+        if (!response.ok) {
+            throw new Error('Ошибка загрузки');
+        }
+
+        let tasks = await response.json();
+
+        // ========= ФИЛЬТР ДЛЯ EMPLOYEE =========
+       // ========= ФИЛЬТР ДЛЯ EMPLOYEE =========
+if (userRole === 'employee') {
+
+    const currentUserId = parseInt(
+        document.getElementById('current-user-id').textContent
+    );
+
+    tasks = tasks.filter(task => {
+
+        // основной исполнитель
+        const mainExecutor =
+            Number(task.executor) === currentUserId;
+
+        // соисполнители
+        const coExecutor =
+            Array.isArray(task.co_executors) &&
+            task.co_executors.includes(currentUserId);
+
+        return mainExecutor || coExecutor;
+    });
+}
+
+        allTasks = tasks;
+
+        renderTasks(tasks);
+
+        if (userRole !== 'employee') {
+            updateProjectStats(tasks);
+        }
+
+    } catch (e) {
+        console.error(e);
+
+        document.getElementById('tasks-list').innerHTML = `
+            <tr>
+                <td colspan="6" class="text-center text-danger">
+                    Ошибка загрузки задач
+                </td>
+            </tr>
+        `;
+    }
+}
+
+function renderTasks(tasks) {
+
+    const tbody = document.getElementById('tasks-list');
+
+    let filteredTasks = tasks;
+
+    // ФИЛЬТР ПО СТАТУСУ
+    if (currentFilter !== 'all') {
+
+        filteredTasks = filteredTasks.filter(
+            t => t.status === currentFilter
+        );
+    }
+
+    if (filteredTasks.length === 0) {
+
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="text-center text-muted">
+                    Нет задач
+                </td>
+            </tr>
+        `;
+
+        return;
+    }
+
+    const canEdit =
+        userRole === 'admin' ||
+        userRole === 'manager';
+
+    tbody.innerHTML = filteredTasks.map(task => `
+        <tr>
+
+            <td>
+                <strong>${escapeHtml(task.title)}</strong>
+            </td>
+
+            <td>
+                <span class="badge ${getStatusClass(task.status)}">
+                    ${getStatusText(task.status)}
+                </span>
+            </td>
+
+            <td>
+                <span class="badge ${getPriorityClass(task.priority)}">
+                    ${getPriorityText(task.priority)}
+                </span>
+            </td>
+
+            <td>
+                <div>
+                    <div>
+                        <i class="fas fa-user text-primary"></i>
+                        ${escapeHtml(task.executor_name || '')}
+                    </div>
+
+                    ${
+                        task.co_executor_names &&
+                        task.co_executor_names.length > 0
+                        ?
+                        `
+                        <small class="text-muted">
+                            <i class="fas fa-users"></i>
+                            ${task.co_executor_names
+                                .map(n => escapeHtml(n))
+                                .join(', ')}
+                        </small>
+                        `
+                        :
+                        ''
+                    }
+                </div>
+            </td>
+
+            <td>
+                ${
+                    task.deadline
+                    ?
+                    new Date(task.deadline)
+                        .toLocaleDateString()
+                    :
+                    '—'
+                }
+            </td>
+
+            <td>
+
+                <div class="btn-group btn-group-sm">
+
+                    <button
+                        class="btn btn-outline-info"
+                        onclick="viewComments(${task.id})"
+                    >
+                        <i class="fas fa-comments"></i>
+                    </button>
+
+                    <button
+                        class="btn btn-outline-secondary"
+                        onclick="viewTaskDetails(${task.id})"
+                    >
+                        <i class="fas fa-eye"></i>
+                    </button>
+
+                    ${
+                        canEdit
+                        ?
+                        `
+                        <a
+                            href="/task/edit/${task.id}/"
+                            class="btn btn-outline-primary"
+                        >
+                            <i class="fas fa-edit"></i>
+                        </a>
+                        `
+                        :
+                        ''
+                    }
+
+                </div>
+
+            </td>
+
+        </tr>
+    `).join('');
+}
+
+function filterTasks(status) {
+
+    currentFilter = status;
+
+    renderTasks(allTasks);
+
+    document.querySelectorAll('.btn-group .btn')
+        .forEach(btn => btn.classList.remove('active'));
+}
+
+// ================= COMMENTS =================
+async function viewComments(taskId) {
+
+    currentTaskId = taskId;
+    document.getElementById('new-comment').value = '';
+
+    let modal = document.getElementById('commentsModal');
+
+    if (!modal) {
+        alert('Модальное окно комментариев отсутствует');
+        return;
+    }
+
+    const modalInstance = new bootstrap.Modal(modal);
+
+    document.getElementById('comments-list').innerHTML =
+        '<div class="text-center">Загрузка...</div>';
+
+    modalInstance.show();
+
+    try {
+
+        const response = await apiFetch(
+            `/api/tasks/${taskId}/comments/`
+        );
+
+        const comments = await response.json();
+
+        if (comments.length === 0) {
+
+            document.getElementById('comments-list').innerHTML =
+                '<div class="text-muted text-center">Нет комментариев</div>';
+
+            return;
+        }
+
+        document.getElementById('comments-list').innerHTML =
+            comments.map(c => `
+                <div class="border-bottom mb-2 pb-2">
+                    <strong>${escapeHtml(c.user_full_name)}</strong>
+                    <div>${escapeHtml(c.text)}</div>
+                    <small class="text-muted">
+                        ${new Date(c.created_at).toLocaleString()}
+                    </small>
+                </div>
+            `).join('');
+
+    } catch (e) {
+
+        console.error(e);
+
+        document.getElementById('comments-list').innerHTML =
+            '<div class="text-danger">Ошибка загрузки</div>';
+    }
+}
+async function addComment() {
+
+    const text =
+        document.getElementById('new-comment').value;
+
+    if (!text.trim()) {
+        return;
+    }
+
+    try {
+
+        const response = await apiFetch(
+            `/api/tasks/${currentTaskId}/comments/`,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    text: text
+                })
+            }
+        );
+
+        if (!response.ok) {
+            throw new Error('Ошибка отправки');
+        }
+
+        document.getElementById('new-comment').value = '';
+
+        viewComments(currentTaskId);
+
+    } catch (e) {
+
+        console.error(e);
+
+        alert('Ошибка добавления комментария');
+    }
+}
+// ================= DETAILS =================
+async function viewTaskDetails(taskId) {
+
+    let modal = document.getElementById('detailsModal');
+
+    if (!modal) {
+        alert('Модальное окно деталей отсутствует');
+        return;
+    }
+
+    const modalInstance = new bootstrap.Modal(modal);
+
+    document.getElementById('detailsModalBody').innerHTML =
+        '<div class="text-center">Загрузка...</div>';
+
+    modalInstance.show();
+
+    try {
+
+        const response = await apiFetch(
+            `/api/tasks/${taskId}/`
+        );
+
+        const task = await response.json();
+
+        document.getElementById('detailsModalBody').innerHTML = `
+            <h4>${escapeHtml(task.title)}</h4>
+
+            <p>${escapeHtml(task.description || 'Нет описания')}</p>
+
+            <hr>
+
+            <p>
+                <strong>Статус:</strong>
+                ${getStatusText(task.status)}
+            </p>
+
+            <p>
+                <strong>Приоритет:</strong>
+                ${getPriorityText(task.priority)}
+            </p>
+
+            <p>
+                <strong>Исполнитель:</strong>
+                ${escapeHtml(task.executor_name || '')}
+            </p>
+
+            <p>
+                <strong>Срок:</strong>
+                ${
+                    task.deadline
+                    ?
+                    new Date(task.deadline)
+                        .toLocaleString()
+                    :
+                    'Не указан'
+                }
+            </p>
+        `;
+
+    } catch (e) {
+
+        console.error(e);
+
+        document.getElementById('detailsModalBody').innerHTML =
+            '<div class="text-danger">Ошибка загрузки</div>';
+    }
+}
+
+// ================= STATS =================
+function updateProjectStats(tasks) {
+
+    const total = tasks.length;
+
+    const completed =
+        tasks.filter(t => t.status === 'done').length;
+
+    const percent =
+        total > 0
+        ? Math.round(completed / total * 100)
+        : 0;
+
+    const completion =
+        document.getElementById('project-completion');
+
+    const bar =
+        document.getElementById('project-progress-bar');
+
+    const stats =
+        document.getElementById('project-stats');
+
+    if (completion) {
+        completion.textContent = `${percent}%`;
+    }
+
+    if (bar) {
+        bar.style.width = `${percent}%`;
+    }
+
+    if (stats) {
+        stats.textContent =
+            `Задач: ${total} | Завершено: ${completed}`;
+    }
+}
+
+// ================= HELPERS =================
+function getStatusClass(status) {
+
+    return {
+        new: 'bg-secondary',
+        in_progress: 'bg-warning',
+        done: 'bg-success'
+    }[status] || 'bg-secondary';
+}
+
+function getStatusText(status) {
+
+    return {
+        new: 'Новая',
+        in_progress: 'В работе',
+        done: 'Завершена'
+    }[status] || status;
+}
+
+function getPriorityClass(priority) {
+
+    if (priority == 3) return 'bg-danger';
+    if (priority == 2) return 'bg-warning';
+
+    return 'bg-success';
+}
+
+function getPriorityText(priority) {
+
+    return {
+        1: 'Низкий',
+        2: 'Средний',
+        3: 'Высокий'
+    }[priority] || 'Средний';
+}
+
+function escapeHtml(text) {
+
+    if (!text) return '';
+
+    const div = document.createElement('div');
+
+    div.textContent = text;
+
+    return div.innerHTML;
+}
+
+// ================= INIT =================
+document.addEventListener('DOMContentLoaded', function () {
+
+    loadTasks();
+
+});
+</script>
+    <!-- COMMENTS MODAL -->
+<!-- COMMENTS MODAL -->
+<div class="modal fade" id="commentsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    Комментарии
+                </h5>
+
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal">
+                </button>
+            </div>
+
+            <div class="modal-body">
+
+                <div id="comments-list" class="mb-3"></div>
+
+                <hr>
+
+                <textarea
+                    id="new-comment"
+                    class="form-control mb-2"
+                    rows="3"
+                    placeholder="Введите комментарий..."
+                ></textarea>
+
+                <button
+                    class="btn btn-primary"
+                    onclick="addComment()"
+                >
+                    Отправить
+                </button>
+
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- DETAILS MODAL -->
+<div class="modal fade" id="detailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    Детали задачи
+                </h5>
+
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal">
+                </button>
+            </div>
+
+            <div
+                class="modal-body"
+                id="detailsModalBody">
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

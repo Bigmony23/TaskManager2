@@ -1,0 +1,321 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}
+    {% if task %}
+        Редактирование задачи
+    {% else %}
+        Создание задачи
+    {% endif %}
+{% endblock %}
+
+{% block content %}
+
+<div class="container mt-4">
+
+    <div class="row justify-content-center">
+
+        <div class="col-md-8">
+
+            <div class="card shadow">
+
+                <div class="card-header bg-primary text-white">
+
+                    <h4 class="mb-0">
+
+                        {% if task %}
+                            <i class="fas fa-edit"></i>
+                            Редактирование задачи
+                        {% else %}
+                            <i class="fas fa-plus"></i>
+                            Создание новой задачи
+                        {% endif %}
+
+                    </h4>
+
+                </div>
+
+                <div class="card-body">
+
+                    <form method="post">
+
+                        {% csrf_token %}
+
+                        <!-- ПРОЕКТ -->
+
+                        {% if projects %}
+
+                        <div class="mb-3">
+
+                            <label for="project" class="form-label">
+                                Проект
+                            </label>
+
+                            <select class="form-select"
+                                    id="project"
+                                    name="project">
+
+                                <option value="">
+                                    Без проекта
+                                </option>
+
+                                {% for project in projects %}
+
+                                <option value="{{ project.id }}"
+                                {% if task.project and task.project.id == project.id %}
+                                    selected
+                                {% endif %}>
+
+                                    {{ project.name }}
+
+                                </option>
+
+                                {% endfor %}
+
+                            </select>
+
+                        </div>
+
+                        {% endif %}
+
+                        <!-- НАЗВАНИЕ -->
+
+                        <div class="mb-3">
+
+                            <label for="title" class="form-label">
+                                Название задачи *
+                            </label>
+
+                            <input type="text"
+                                   class="form-control"
+                                   id="title"
+                                   name="title"
+                                   value="{{ task.title|default:'' }}"
+                                   required>
+
+                        </div>
+
+                        <!-- ОПИСАНИЕ -->
+
+                        <div class="mb-3">
+
+                            <label for="description" class="form-label">
+                                Описание
+                            </label>
+
+                            <textarea class="form-control"
+                                      id="description"
+                                      name="description"
+                                      rows="5">{{ task.description|default:'' }}</textarea>
+
+                        </div>
+
+                        <!-- СТАТУС И ПРИОРИТЕТ -->
+
+                        <div class="row">
+
+                            <div class="col-md-6 mb-3">
+
+                                <label for="status" class="form-label">
+                                    Статус
+                                </label>
+
+                                <select class="form-select"
+                                        id="status"
+                                        name="status">
+
+                                    <option value="new"
+                                    {% if task.status == 'new' %}
+                                        selected
+                                    {% endif %}>
+                                        Новая
+                                    </option>
+
+                                    <option value="in_progress"
+                                    {% if task.status == 'in_progress' %}
+                                        selected
+                                    {% endif %}>
+                                        В процессе
+                                    </option>
+
+                                    <option value="done"
+                                    {% if task.status == 'done' %}
+                                        selected
+                                    {% endif %}>
+                                        Завершена
+                                    </option>
+
+                                </select>
+
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+
+                                <label for="priority" class="form-label">
+                                    Приоритет
+                                </label>
+
+                                <select class="form-select"
+                                        id="priority"
+                                        name="priority">
+
+                                    <option value="1"
+                                    {% if task.priority == 1 %}
+                                        selected
+                                    {% endif %}>
+                                        Низкий
+                                    </option>
+
+                                    <option value="2"
+                                    {% if task.priority == 2 %}
+                                        selected
+                                    {% endif %}>
+                                        Средний
+                                    </option>
+
+                                    <option value="3"
+                                    {% if task.priority == 3 %}
+                                        selected
+                                    {% endif %}>
+                                        Высокий
+                                    </option>
+
+                                </select>
+
+                            </div>
+
+                        </div>
+
+                        <!-- DEADLINE + ИСПОЛНИТЕЛЬ -->
+
+                        <div class="row">
+
+                            <div class="col-md-6 mb-3">
+
+                                <label for="deadline" class="form-label">
+                                    Срок выполнения
+                                </label>
+
+                                <input type="datetime-local"
+                                       class="form-control"
+                                       id="deadline"
+                                       name="deadline"
+                                       value="{{ task.deadline|date:'Y-m-d\\TH:i'|default:'' }}">
+
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+
+                                <label for="executor" class="form-label">
+                                    Исполнитель
+                                </label>
+
+                                <select class="form-select"
+                                        id="executor"
+                                        name="executor"
+                                        required>
+
+                                    <option value="">
+                                        Выберите исполнителя
+                                    </option>
+
+                                    {% for user in users %}
+
+                                    <option value="{{ user.id }}"
+                                    {% if task.executor and task.executor.id == user.id %}
+                                        selected
+                                    {% endif %}>
+
+                                        {{ user.get_full_name|default:user.username }}
+                                        ({{ user.get_role_display }})
+
+                                    </option>
+
+                                    {% endfor %}
+
+                                </select>
+
+                            </div>
+
+                        </div>
+
+                        <!-- СОИСПОЛНИТЕЛИ -->
+
+                        <div class="mb-3">
+
+                            <label for="co_executors" class="form-label">
+                                Соисполнители
+                            </label>
+
+                            <select class="form-select"
+                                    id="co_executors"
+                                    name="co_executors"
+                                    multiple
+                                    size="5">
+
+                                {% for user in users %}
+
+                                    {% if not task.executor or user.id != task.executor.id %}
+
+                                    <option value="{{ user.id }}"
+                                    {% if user.id in co_executors_ids %}
+                                        selected
+                                    {% endif %}>
+
+                                        {{ user.get_full_name|default:user.username }}
+                                        ({{ user.get_role_display }})
+
+                                    </option>
+
+                                    {% endif %}
+
+                                {% endfor %}
+
+                            </select>
+
+                            <small class="text-muted">
+                                Удерживайте Ctrl для выбора нескольких
+                            </small>
+
+                        </div>
+
+                        <!-- КНОПКИ -->
+
+                        <div class="d-flex justify-content-between mt-4">
+
+                            <a href="/dashboard/"
+                               class="btn btn-secondary">
+
+                                <i class="fas fa-arrow-left"></i>
+                                Назад
+
+                            </a>
+
+                            <button type="submit"
+                                    class="btn btn-primary">
+
+                                <i class="fas fa-save"></i>
+
+                                {% if task %}
+                                    Сохранить
+                                {% else %}
+                                    Создать
+                                {% endif %}
+
+                            </button>
+
+                        </div>
+
+                    </form>
+
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+{% endblock %}

@@ -1,0 +1,231 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Аналитика проекта - {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3">{{ project.name }}</h1>
+            <p class="text-muted">Аналитика и эффективность проекта</p>
+        </div>
+        <a href="/projects/{{ project.id }}/" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left"></i> Вернуться к проекту
+        </a>
+    </div>
+
+    <!-- Прогресс проекта -->
+    <div class="stats-grid mb-4">
+        <div class="stat-card">
+            <div class="stat-title">Прогресс</div>
+            <div class="stat-value">{{ progress.completion_percent|default:0 }}%</div>
+            <div class="progress mt-2">
+                <div class="progress-bar" style="width: {{ progress.completion_percent|default:0 }}%; background: {{ project.color|default:'#667eea' }}"></div>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-title">Задач всего</div>
+            <div class="stat-value">{{ progress.total|default:0 }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-title">Завершено</div>
+            <div class="stat-value">{{ progress.completed|default:0 }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-title">В работе</div>
+            <div class="stat-value">{{ progress.in_progress|default:0 }}</div>
+        </div>
+    </div>
+
+    <!-- Трудозатраты и сроки -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-clock me-2"></i>Трудозатраты</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <span>Плановые часы:</span>
+                        <strong>{{ planned_hours|default:0 }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mt-2">
+                        <span>Фактические часы:</span>
+                        <strong>{{ actual_hours|default:0 }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mt-2">
+                        <span>Отклонение:</span>
+                        <strong class="{% if planned_vs_actual_hours.diff > 0 %}text-danger{% else %}text-success{% endif %}">
+                            {{ planned_vs_actual_hours.diff|default:0 }}
+                        </strong>
+                    </div>
+                    <div class="progress mt-3">
+                        <div class="progress-bar {% if planned_vs_actual_hours.percent > 100 %}bg-danger{% else %}bg-success{% endif %}" 
+                             style="width: {{ planned_vs_actual_hours.percent|default:0 }}%"></div>
+                    </div>
+                    <small class="text-muted">{{ planned_vs_actual_hours.percent|default:0 }}% от плана</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-calendar me-2"></i>Сроки</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <span>Дата начала:</span>
+                        <strong>{{ project.start_date|date:"d.m.Y"|default:"—" }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mt-2">
+                        <span>Дата окончания:</span>
+                        <strong>{{ project.end_date|date:"d.m.Y"|default:"—" }}</strong>
+                    </div>
+                    <div class="d-flex justify-content-between mt-2">
+                        <span>Осталось дней:</span>
+                        <strong class="{% if days_remaining < 0 %}text-danger{% else %}text-success{% endif %}">
+                            {{ days_remaining|default:"—" }}
+                        </strong>
+                    </div>
+                    {% if project.is_overdue %}
+                    <div class="alert alert-danger mt-3 mb-0">
+                        <i class="fas fa-exclamation-triangle"></i> Проект просрочен!
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Таблица исполнителей -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-users me-2"></i>Эффективность исполнителей</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Исполнитель</th>
+                            <th>Всего задач</th>
+                            <th>Завершено</th>
+                            <th>В работе</th>
+                            <th>Просрочено</th>
+                            <th>Скорость (дни)</th>
+                            <th>Эффективность</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for stat in executor_stats %}
+                        <tr>
+                            <td>
+                                <i class="fas fa-user-circle me-2"></i>
+                                <strong>{{ stat.executor_name }}</strong>
+                            </td>
+                            <td>{{ stat.total|default:0 }}</td>
+                            <td class="text-success">{{ stat.completed|default:0 }} ({{ stat.completion_rate|default:0 }}%)</td>
+                            <td class="text-warning">{{ stat.in_progress|default:0 }}</td>
+                            <td class="text-danger">{{ stat.overdue|default:0 }}</td>
+                            <td>{{ stat.avg_completion_days|default:"—" }}</td>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="progress" style="height: 6px; width: 80px;">
+                                        <div class="progress-bar 
+                                            {% if stat.efficiency >= 80 %}bg-success
+                                            {% elif stat.efficiency >= 50 %}bg-warning
+                                            {% else %}bg-danger{% endif %}" 
+                                            style="width: {{ stat.efficiency|default:0 }}%">
+                                        </div>
+                                    </div>
+                                    <small class="fw-bold">{{ stat.efficiency|default:0 }}%</small>
+                                </div>
+                                {% if stat.efficiency >= 80 %}
+                                <small class="text-success d-block">⭐ Отлично</small>
+                                {% elif stat.efficiency >= 50 %}
+                                <small class="text-warning d-block">📊 Средне</small>
+                                {% else %}
+                                <small class="text-danger d-block">⚠️ Низкая</small>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted">Нет данных по исполнителям</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Burndown Chart (если есть данные) -->
+    {% if burndown_data %}
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fas fa-chart-line me-2"></i>Burndown Chart</h5>
+        </div>
+        <div class="card-body">
+            <canvas id="burndownChart" height="300"></canvas>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    // Burndown Chart
+    // Burndown Chart с идеальной линией
+{% if burndown_data %}
+const burndownCtx = document.getElementById('burndownChart')?.getContext('2d');
+if (burndownCtx) {
+    const burndownData = {{ burndown_data|safe }};
+    const totalDays = burndownData.length;
+    const totalTasks = burndownData[0]?.remaining || 0;
+    
+    // Идеальная линия (прямая от totalTasks до 0)
+    const idealLine = burndownData.map((_, index) => {
+        return Math.max(0, totalTasks - (totalTasks / totalDays) * index);
+    });
+    
+    new Chart(burndownCtx, {
+        type: 'line',
+        data: {
+            labels: burndownData.map(d => d.date),
+            datasets: [
+                {
+                    label: 'Факт (осталось задач)',
+                    data: burndownData.map(d => d.remaining),
+                    borderColor: '#667eea',
+                    backgroundColor: 'rgba(102,126,234,0.1)',
+                    fill: true,
+                    tension: 0.3
+                },
+                {
+                    label: 'Идеальный план',
+                    data: idealLine,
+                    borderColor: '#10b981',
+                    backgroundColor: 'transparent',
+                    borderDash: [5, 5],
+                    fill: false,
+                    tension: 0
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: {
+                legend: { position: 'top' }
+            }
+        }
+    });
+}
+{% endif %}
+    
+    // Для отладки - выводим данные в консоль
+    console.log('Executor stats:', {{ executor_stats|safe|default:'[]' }});
+</script>
+{% endblock %}

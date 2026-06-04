@@ -1,0 +1,714 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}TaskFlow - Дашборд{% endblock %}
+
+{% block content %}
+<!-- Скрытые элементы для данных -->
+<span id="stat-new" style="display: none;">{{ stat_new }}</span>
+<span id="stat-progress" style="display: none;">{{ stat_in_progress }}</span>
+<span id="stat-completed" style="display: none;">{{ stat_completed }}</span>
+<span id="stat-priority-low" style="display: none;">{{ stat_priority_low }}</span>
+<span id="stat-priority-medium" style="display: none;">{{ stat_priority_medium }}</span>
+<span id="stat-priority-high" style="display: none;">{{ stat_priority_high }}</span>
+<span id="user-role-data" style="display: none;" data-role="{{ user_role }}">{{ user_role }}</span>
+
+<div class="fade-in">
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="display-5 fw-bold" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); -webkit-background-clip: text; background-clip: text; color: transparent;">
+                Дашборд
+            </h1>
+            <p class="text-muted">Управляйте задачами, отслеживайте прогресс и анализируйте результаты</p>
+        </div>
+        {% if user_role != 'employee' %}
+        <a href="/task/create/" class="btn btn-gradient-primary">
+            <i class="fas fa-plus me-2"></i>Создать задачу
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- Messages -->
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show rounded-3 mb-4" role="alert">
+                <i class="fas fa-{% if message.tags == 'success' %}check-circle{% elif message.tags == 'error' %}exclamation-circle{% else %}info-circle{% endif %} me-2"></i>
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+
+    <!-- Statistics Cards -->
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);">
+                <i class="fas fa-tasks" style="color: #667eea;"></i>
+            </div>
+            <div class="stat-title">Всего задач</div>
+            <div class="stat-value">{{ stat_total }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #10b98120 0%, #05966920 100%);">
+                <i class="fas fa-check-circle" style="color: #10b981;"></i>
+            </div>
+            <div class="stat-title">Завершено</div>
+            <div class="stat-value">{{ stat_completed }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #f59e0b20 0%, #d9770620 100%);">
+                <i class="fas fa-spinner" style="color: #f59e0b;"></i>
+            </div>
+            <div class="stat-title">В работе</div>
+            <div class="stat-value">{{ stat_in_progress }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon" style="background: linear-gradient(135deg, #ef444420 0%, #dc262620 100%);">
+                <i class="fas fa-clock" style="color: #ef4444;"></i>
+            </div>
+            <div class="stat-title">Просрочено</div>
+            <div class="stat-value">{{ stat_overdue }}</div>
+        </div>
+    </div>
+
+    <!-- ========== ПРОЕКТЫ ========== -->
+    <div class="card mb-4 shadow-sm" style="background: var(--bg-secondary); border: 1px solid var(--border-color);">
+    <div class="card-header" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-bottom: none;">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-semibold">
+                <i class="fas fa-folder-open me-2"></i>Проекты
+            </h5>
+            {% if user_role == 'admin' %}
+            <a href="/projects/create/" class="btn btn-sm btn-light rounded-pill">
+                <i class="fas fa-plus me-1"></i> Создать проект
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    <div class="card-body" style="background: var(--bg-secondary);">
+        <div class="row" id="projects-list">
+            <div class="col-12 text-center py-4">
+                <div class="d-flex flex-column align-items-center">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Загрузка...</span>
+                    </div>
+                    <p class="text-muted mb-0">Загрузка проектов...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+    <!-- Tabs -->
+    <div class="tabs-container">
+        <ul class="tabs-list">
+            <li><button class="tab-btn active" data-view="kanban" onclick="switchView('kanban')"><i class="fas fa-columns"></i> Kanban доска</button></li>
+            {% if user_role != 'employee' %}
+            <li><button class="tab-btn" data-view="analytics" onclick="switchView('analytics')"><i class="fas fa-chart-line"></i> Аналитика</button></li>
+            {% endif %}
+            <li><button class="tab-btn" data-view="list" onclick="switchView('list')"><i class="fas fa-list"></i> Список задач</button></li>
+        </ul>
+    </div>
+
+    <!-- KANBAN VIEW -->
+    <div id="kanban-view">
+        <div class="kanban-board">
+            <!-- Column: Новая -->
+            <div class="kanban-column">
+                <div class="column-header">
+                    <h5><i class="fas fa-plus-circle me-2"></i>Новая</h5>
+                    <span class="column-count">{{ tasks_new|length }}</span>
+                </div>
+                <div class="column-body">
+                    {% for task in tasks_new %}
+                    <div class="task-card">
+                        <div class="task-title">
+                            <span onclick="viewTaskDetails({{ task.id }})" style="cursor: pointer;">{{ task.title|truncatechars:40 }}</span>
+                            <span class="badge {% if task.priority == 3 %}badge-priority-high{% elif task.priority == 2 %}badge-priority-medium{% else %}badge-priority-low{% endif %}">
+                                {{ task.get_priority_display }}
+                            </span>
+                        </div>
+                        <div class="task-meta">
+                            <span><i class="fas fa-user"></i> {{ task.executor.get_full_name|default:task.executor.username|truncatechars:15 }}</span>
+                            <span><i class="fas fa-calendar"></i> {{ task.deadline|date:"d.m.Y" }}</span>
+                        </div>
+                        <div class="task-actions">
+                            <form action="/task/change-status/{{ task.id }}/" method="post" style="flex: 1;">
+                                {% csrf_token %}
+                                <input type="hidden" name="next_status" value="in_progress">
+                                <button type="submit" class="btn btn-sm btn-warning w-100"><i class="fas fa-arrow-right"></i> В работу</button>
+                            </form>
+                            <button class="btn btn-sm btn-outline-info" onclick="viewComments({{ task.id }})" title="Комментарии">
+                                <i class="fas fa-comment"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="viewTaskDetails({{ task.id }})" title="Детали">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            {% if user_role != 'employee' %}
+                            <a href="/task/edit/{{ task.id }}/" class="btn btn-sm btn-outline-primary" title="Редактировать">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <form action="/task/delete/{{ task.id }}/" method="post" style="display:inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Удалить задачу?')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-center text-muted py-5">Нет задач</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Column: В процессе -->
+            <div class="kanban-column">
+                <div class="column-header">
+                    <h5><i class="fas fa-play-circle me-2"></i>В процессе</h5>
+                    <span class="column-count">{{ tasks_in_progress|length }}</span>
+                </div>
+                <div class="column-body">
+                    {% for task in tasks_in_progress %}
+                    <div class="task-card">
+                        <div class="task-title">
+                            <span onclick="viewTaskDetails({{ task.id }})" style="cursor: pointer;">{{ task.title|truncatechars:40 }}</span>
+                            <span class="badge {% if task.priority == 3 %}badge-priority-high{% elif task.priority == 2 %}badge-priority-medium{% else %}badge-priority-low{% endif %}">
+                                {{ task.get_priority_display }}
+                            </span>
+                        </div>
+                        <div class="task-meta">
+                            <span><i class="fas fa-user"></i> {{ task.executor.get_full_name|default:task.executor.username|truncatechars:15 }}</span>
+                            <span><i class="fas fa-calendar"></i> {{ task.deadline|date:"d.m.Y" }}</span>
+                        </div>
+                        <div class="task-actions">
+                            <form action="/task/change-status/{{ task.id }}/" method="post" style="flex: 1;">
+                                {% csrf_token %}
+                                <input type="hidden" name="next_status" value="done">
+                                <button type="submit" class="btn btn-sm btn-success w-100"><i class="fas fa-check"></i> Завершить</button>
+                            </form>
+                            <button class="btn btn-sm btn-outline-info" onclick="viewComments({{ task.id }})" title="Комментарии">
+                                <i class="fas fa-comment"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="viewTaskDetails({{ task.id }})" title="Детали">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            {% if user_role != 'employee' %}
+                            <a href="/task/edit/{{ task.id }}/" class="btn btn-sm btn-outline-primary" title="Редактировать">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <form action="/task/delete/{{ task.id }}/" method="post" style="display:inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Удалить задачу?')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-center text-muted py-5">Нет задач</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Column: Завершена -->
+            <div class="kanban-column">
+                <div class="column-header">
+                    <h5><i class="fas fa-check-circle me-2"></i>Завершена</h5>
+                    <span class="column-count">{{ tasks_done|length }}</span>
+                </div>
+                <div class="column-body">
+                    {% for task in tasks_done %}
+                    <div class="task-card opacity-75">
+                        <div class="task-title">
+                            <span onclick="viewTaskDetails({{ task.id }})" style="cursor: pointer;"><del>{{ task.title|truncatechars:40 }}</del></span>
+                            <span class="badge {% if task.priority == 3 %}badge-priority-high{% elif task.priority == 2 %}badge-priority-medium{% else %}badge-priority-low{% endif %}">
+                                {{ task.get_priority_display }}
+                            </span>
+                        </div>
+                        <div class="task-meta">
+                            <span><i class="fas fa-user"></i> {{ task.executor.get_full_name|default:task.executor.username|truncatechars:15 }}</span>
+                            <span><i class="fas fa-calendar"></i> {{ task.deadline|date:"d.m.Y" }}</span>
+                        </div>
+                        <div class="task-actions">
+                            <button class="btn btn-sm btn-outline-info" onclick="viewComments({{ task.id }})" title="Комментарии">
+                                <i class="fas fa-comment"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="viewTaskDetails({{ task.id }})" title="Детали">
+                                <i class="fas fa-eye"></i>
+                            </button>
+                            {% if user_role != 'employee' %}
+                            <a href="/task/edit/{{ task.id }}/" class="btn btn-sm btn-outline-primary" title="Редактировать">
+                                <i class="fas fa-edit"></i>
+                            </a>
+                            <form action="/task/delete/{{ task.id }}/" method="post" style="display:inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Удалить задачу?')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="text-center text-muted py-5">Нет задач</div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ANALYTICS VIEW (только для Admin и Manager) -->
+    {% if user_role != 'employee' %}
+    <div id="analytics-view" style="display: none;">
+        <div class="row">
+            <div class="col-md-6">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);">
+                        <i class="fas fa-chart-pie" style="color: #667eea;"></i>
+                    </div>
+                    <div class="stat-title">Статусы задач</div>
+                    <canvas id="statusChart" height="200"></canvas>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #f59e0b20 0%, #d9770620 100%);">
+                        <i class="fas fa-chart-simple" style="color: #f59e0b;"></i>
+                    </div>
+                    <div class="stat-title">Приоритеты</div>
+                    <canvas id="priorityChart" height="200"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-container mt-4">
+            <div class="table-header p-4 border-bottom">
+                <h5 class="mb-0"><i class="fas fa-users me-2"></i>Статистика по исполнителям</h5>
+            </div>
+            <div class="table-responsive">
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th>Исполнитель</th>
+                            <th>Всего задач</th>
+                            <th>Завершено</th>
+                            <th>В работе</th>
+                            <th>Эффективность</th>
+                        </tr>
+                    </thead>
+                    <tbody id="executor-stats-body">
+                        <tr><td colspan="5" class="text-center">Загрузка...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- LIST VIEW -->
+    <div id="list-view" style="display: none;">
+        <div class="table-container">
+            <div class="table-header p-4 border-bottom d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-list-ul me-2"></i>Все задачи</h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="exportTasks()"><i class="fas fa-download"></i> Экспорт</button>
+            </div>
+            <div class="table-responsive">
+                <table class="custom-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th><th>Название</th><th>Статус</th><th>Приоритет</th><th>Исполнитель</th><th>Срок</th><th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for task in tasks %}
+                        <tr>
+                            <td>#{{ task.id }}</td>
+                            <td><strong>{{ task.title|truncatechars:40 }}</strong></td>
+                            <td>
+                                <span class="badge {% if task.status == 'new' %}badge-status-new{% elif task.status == 'in_progress' %}badge-status-progress{% else %}badge-status-done{% endif %}">
+                                    {{ task.get_status_display }}
+                                </span>
+                            </td>
+                            <td>
+                                <span class="badge {% if task.priority == 3 %}badge-priority-high{% elif task.priority == 2 %}badge-priority-medium{% else %}badge-priority-low{% endif %}">
+                                    {{ task.get_priority_display }}
+                                </span>
+                            </td>
+                            <td>{{ task.executor.get_full_name|default:task.executor.username }}</td>
+                            <td>{{ task.deadline|date:"d.m.Y" }}</td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-info" onclick="viewComments({{ task.id }})" title="Комментарии">
+                                        <i class="fas fa-comment"></i>
+                                    </button>
+                                    <button class="btn btn-outline-secondary" onclick="viewTaskDetails({{ task.id }})" title="Детали">
+                                        <i class="fas fa-eye"></i>
+                                    </button>
+                                    {% if user_role != 'employee' %}
+                                    <a href="/task/edit/{{ task.id }}/" class="btn btn-outline-primary" title="Редактировать">
+                                        <i class="fas fa-edit"></i>
+                                    </a>
+                                    <form action="/task/delete/{{ task.id }}/" method="post" style="display:inline;">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-outline-danger" onclick="return confirm('Удалить задачу?')">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальные окна -->
+<div class="modal fade" id="commentsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-comments"></i> Комментарии</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="comments-list" class="mb-3"></div>
+                <hr>
+                <textarea id="new-comment" class="form-control mb-2" rows="3" placeholder="Ваш комментарий..."></textarea>
+                <button class="btn btn-primary" onclick="addComment()">Отправить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="detailsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-info-circle"></i> Детали задачи</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detailsModalBody">Загрузка...</div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .project-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .project-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 10px 25px -5px rgba(0,0,0,0.1);
+    }
+    .task-card {
+        transition: transform 0.2s, box-shadow 0.2s;
+        background: var(--bg-primary);
+        border-radius: 14px;
+        padding: 14px;
+        margin-bottom: 12px;
+        border: 1px solid var(--border-color);
+    }
+    .task-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    .kanban-column {
+        background: var(--bg-secondary);
+        border-radius: 20px;
+        min-height: 500px;
+        border: 1px solid var(--border-color);
+        overflow: hidden;
+    }
+    .task-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 12px;
+        flex-wrap: wrap;
+    }
+    .task-actions .btn-sm {
+        padding: 4px 8px;
+        font-size: 12px;
+    }
+    .opacity-75 {
+        opacity: 0.75;
+    }
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// JWT токены из Django
+{% if jwt_access %}
+localStorage.setItem('access_token', '{{ jwt_access }}');
+localStorage.setItem('refresh_token', '{{ jwt_refresh }}');
+{% endif %}
+
+let currentTaskId = null;
+
+function getToken() { return localStorage.getItem('access_token'); }
+
+async function apiFetch(url, options = {}) {
+    let token = getToken();
+    options.headers = { ...(options.headers || {}), 'Authorization': `Bearer ${token}` };
+    let response = await fetch(url, options);
+    if (response.status === 401) {
+        const refresh = localStorage.getItem('refresh_token');
+        if (refresh) {
+            const r = await fetch('/api/token/refresh/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refresh })
+            });
+            if (r.ok) {
+                const d = await r.json();
+                localStorage.setItem('access_token', d.access);
+                options.headers['Authorization'] = `Bearer ${d.access}`;
+                response = await fetch(url, options);
+            }
+        }
+    }
+    return response;
+}
+
+// ========== ПЕРЕКЛЮЧЕНИЕ ВКЛАДОК ==========
+function switchView(view) {
+    document.getElementById('kanban-view').style.display = view === 'kanban' ? 'block' : 'none';
+    document.getElementById('analytics-view').style.display = view === 'analytics' ? 'block' : 'none';
+    document.getElementById('list-view').style.display = view === 'list' ? 'block' : 'none';
+    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+    const activeBtn = document.querySelector(`.tab-btn[data-view="${view}"]`);
+    if (activeBtn) activeBtn.classList.add('active');
+    if (view === 'analytics') {
+        setTimeout(() => loadCharts(), 100);
+    }
+    localStorage.setItem('lastView', view);
+}
+
+// ========== ГРАФИКИ ==========
+function loadCharts() {
+    const statusCanvas = document.getElementById('statusChart');
+    const priorityCanvas = document.getElementById('priorityChart');
+    
+    if (!statusCanvas && !priorityCanvas) {
+        console.log('Элементы для графиков не найдены');
+        return;
+    }
+    
+    const newCount = parseInt(document.getElementById('stat-new')?.textContent || 0);
+    const progressCount = parseInt(document.getElementById('stat-progress')?.textContent || 0);
+    const completedCount = parseInt(document.getElementById('stat-completed')?.textContent || 0);
+    const low = parseInt(document.getElementById('stat-priority-low')?.textContent || 0);
+    const medium = parseInt(document.getElementById('stat-priority-medium')?.textContent || 0);
+    const high = parseInt(document.getElementById('stat-priority-high')?.textContent || 0);
+
+    if (statusCanvas) {
+        if (window.statusChart && typeof window.statusChart.destroy === 'function') {
+            window.statusChart.destroy();
+        }
+        window.statusChart = new Chart(statusCanvas.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Новая', 'В процессе', 'Завершена'],
+                datasets: [{ data: [newCount, progressCount, completedCount], backgroundColor: ['#6c757d', '#ffc107', '#28a745'] }]
+            },
+            options: { responsive: true, maintainAspectRatio: true }
+        });
+    }
+    
+    if (priorityCanvas) {
+        if (window.priorityChart && typeof window.priorityChart.destroy === 'function') {
+            window.priorityChart.destroy();
+        }
+        window.priorityChart = new Chart(priorityCanvas.getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: ['Низкий', 'Средний', 'Высокий'],
+                datasets: [{ data: [low, medium, high], backgroundColor: ['#28a745', '#ffc107', '#dc3545'] }]
+            },
+            options: { responsive: true, maintainAspectRatio: true }
+        });
+    }
+}
+
+// ========== КОММЕНТАРИИ ==========
+async function viewComments(taskId) {
+    currentTaskId = taskId;
+    const container = document.getElementById('comments-list');
+    container.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div>';
+    const modal = new bootstrap.Modal(document.getElementById('commentsModal'));
+    modal.show();
+    try {
+        const response = await apiFetch(`/api/tasks/${taskId}/comments/`);
+        if (response.ok) {
+            const comments = await response.json();
+            if (comments.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted">Нет комментариев</div>';
+            } else {
+                container.innerHTML = comments.map(c => `<div class="border-bottom pb-2 mb-2"><strong>${escapeHtml(c.user)}</strong><br>${escapeHtml(c.text)}<br><small class="text-muted">${new Date(c.created_at).toLocaleString()}</small></div>`).join('');
+            }
+        }
+    } catch(e) { container.innerHTML = '<div class="text-danger">Ошибка</div>'; }
+}
+
+async function addComment() {
+    const text = document.getElementById('new-comment').value;
+    if (!text.trim()) return;
+    await apiFetch(`/api/tasks/${currentTaskId}/comments/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text })
+    });
+    document.getElementById('new-comment').value = '';
+    viewComments(currentTaskId);
+}
+
+// ========== ДЕТАЛИ ЗАДАЧИ ==========
+async function viewTaskDetails(taskId) {
+    const modalBody = document.getElementById('detailsModalBody');
+    modalBody.innerHTML = '<div class="text-center"><i class="fas fa-spinner fa-spin"></i> Загрузка...</div>';
+    const modal = new bootstrap.Modal(document.getElementById('detailsModal'));
+    modal.show();
+    try {
+        const response = await apiFetch(`/api/tasks/${taskId}/`);
+        if (response.ok) {
+            const task = await response.json();
+            modalBody.innerHTML = `
+                <h4>${escapeHtml(task.title)}</h4>
+                <p>${escapeHtml(task.description) || 'Нет описания'}</p>
+                <p><strong>Статус:</strong> ${task.status_display || task.status}</p>
+                <p><strong>Приоритет:</strong> ${task.priority_display || task.priority}</p>
+                <p><strong>Исполнитель:</strong> ${escapeHtml(task.executor_name || task.executor)}</p>
+                <p><strong>Автор:</strong> ${escapeHtml(task.author_name || task.author)}</p>
+                <p><strong>Срок:</strong> ${task.deadline ? new Date(task.deadline).toLocaleString() : 'Не указан'}</p>
+                <p><strong>Создана:</strong> ${new Date(task.created_at).toLocaleString()}</p>
+            `;
+        }
+    } catch(e) { modalBody.innerHTML = '<div class="text-danger">Ошибка</div>'; }
+}
+
+function escapeHtml(text) { if (!text) return ''; const div = document.createElement('div'); div.textContent = text; return div.innerHTML; }
+
+async function exportTasks() { 
+    window.open('/api/tasks/export/', '_blank'); 
+}
+
+// ========== ПРОЕКТЫ ==========
+async function loadProjects() {
+    const token = getToken();
+    if (!token) {
+        document.getElementById('projects-list').innerHTML = '<div class="col-12 text-center text-muted py-4">Нет проектов</div>';
+        return;
+    }
+    
+    try {
+        const response = await apiFetch('/api/projects/');
+        if (response.ok) {
+            const projects = await response.json();
+            renderProjects(projects);
+        } else {
+            document.getElementById('projects-list').innerHTML = '<div class="col-12 text-center text-muted py-4">Нет проектов</div>';
+        }
+    } catch(e) { 
+        console.error('Ошибка загрузки проектов:', e); 
+        document.getElementById('projects-list').innerHTML = '<div class="col-12 text-center text-muted py-4">Ошибка загрузки</div>';
+    }
+}
+
+function renderProjects(projects) {
+    const container = document.getElementById('projects-list');
+    const userRole = '{{ user_role }}';
+    if (!projects.length) {
+        container.innerHTML = `<div class="col-12 text-center text-muted py-4">Нет проектов</div>`;
+        return;
+    }
+    const activeProjects = projects.filter(p => p.status === 'active').slice(0, 3);
+    if (userRole === 'employee') {
+        container.innerHTML = activeProjects.map(p => `
+            <div class="col-md-4 mb-3">
+                <div class="card project-card" style="border-top: 4px solid ${p.color || '#667eea'}">
+                    <div class="card-body">
+                        <h6>${escapeHtml(p.name)}</h6>
+                        <p class="small text-muted">${escapeHtml(p.manager_name || 'Нет менеджера')}</p>
+                        <div class="progress mb-2" style="height:6px"><div class="progress-bar" style="width:${p.completion_percent||0}%"></div></div>
+                        <small>Прогресс: ${p.completion_percent||0}%</small>
+                    </div>
+                    <div class="card-footer"><a href="/projects/${p.id}/" class="btn btn-sm btn-outline-secondary w-100">Просмотр</a></div>
+                </div>
+            </div>
+        `).join('');
+    } else {
+        container.innerHTML = activeProjects.map(p => `
+            <div class="col-md-4 mb-3">
+                <div class="card project-card" style="border-top: 4px solid ${p.color || '#667eea'}">
+                    <div class="card-body">
+                        <h6>${escapeHtml(p.name)}</h6>
+                        <p class="small text-muted">${escapeHtml(p.manager_name || 'Нет менеджера')}</p>
+                        <div class="progress mb-2" style="height:6px"><div class="progress-bar" style="width:${p.completion_percent||0}%"></div></div>
+                        <div class="d-flex justify-content-between small"><span>Прогресс: ${p.completion_percent||0}%</span><span>Задач: ${p.tasks_count||0}</span></div>
+                    </div>
+                    <div class="card-footer d-flex gap-2">
+                        <a href="/projects/${p.id}/" class="btn btn-sm btn-outline-primary flex-fill">Подробнее</a>
+                        <a href="/projects/${p.id}/analytics/" class="btn btn-sm btn-outline-secondary flex-fill">Аналитика</a>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+}
+
+// ========== ЗАГРУЗКА СТАТИСТИКИ ИСПОЛНИТЕЛЕЙ ==========
+async function loadExecutorStats() {
+    const userRole = '{{ user_role }}';
+    if (userRole === 'employee') return;
+    
+    const token = getToken();
+    if (!token) return;
+    
+    try {
+        const response = await apiFetch('/api/tasks/analytics/');
+        if (response.ok) {
+            const data = await response.json();
+            const tbody = document.getElementById('executor-stats-body');
+            if (tbody && data.executor_stats && data.executor_stats.length > 0) {
+                tbody.innerHTML = data.executor_stats.map(stat => `
+                    <tr>
+                        <td><i class="fas fa-user-circle me-2 text-primary"></i>${escapeHtml(stat.name)}</td>
+                        <td>${stat.total}</td>
+                        <td class="text-success">${stat.completed} (${stat.completion_rate}%)</td>
+                        <td>${stat.in_progress}</td>
+                        <td>
+                            <div class="progress" style="height: 6px; width: 100px;">
+                                <div class="progress-bar bg-primary" style="width: ${stat.efficiency}%"></div>
+                            </div>
+                            <small>${stat.efficiency}%</small>
+                        </td>
+                    </tr>
+                `).join('');
+            } else if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Нет данных</td></tr>';
+            }
+        }
+    } catch(e) { console.error('Ошибка загрузки статистики:', e); }
+}
+
+// ========== ИНИЦИАЛИЗАЦИЯ ==========
+document.addEventListener('DOMContentLoaded', function() {
+    loadProjects();
+    loadExecutorStats();
+    const lastView = localStorage.getItem('lastView');
+    switchView(lastView && lastView !== 'kanban' ? lastView : 'kanban');
+    setInterval(() => { 
+        if (document.getElementById('analytics-view').style.display !== 'none') {
+            loadCharts(); 
+        }
+    }, 30000);
+});
+</script>
+{% endblock %}
